@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Transcribe Test</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>Transcribe Test</h1>
+      <p class="muted">
+        Ses dosyasi sec, otomatik transcribe edilsin. Sonra tek tikla ozet cikarabilirsin.
+      </p>
+
+      <section class="card">
+        <h2>1) Ses Dosyasi Sec</h2>
+        <p class="muted">Dosya secildiginde transcribe otomatik baslar. Buyuk dosyalar desteklenir.</p>
+        <input id="fileInput" type="file" accept="audio/*,video/*" />
+        <p id="recordStatus" class="muted">Hazir</p>
+      </section>
+
+      <section class="card">
+        <h2>2) Transkript</h2>
+        <div class="row">
+          <button id="transcribeBtn" disabled>Tekrar Transcribe Et</button>
+          <button id="copyTranscriptBtn" type="button">Kopyala</button>
+        </div>
+        <p id="transcribeStatus" class="muted"></p>
+        <textarea id="transcriptOutput" placeholder="Transkript burada gorunecek..."></textarea>
+      </section>
+
+      <section class="card">
+        <h2>3) Ozet ve Aksiyonlar</h2>
+        <div class="row">
+          <button id="analyzeBtn" disabled>Ozet Cikar</button>
+          <button id="copyAnalysisBtn" type="button">Kopyala</button>
+        </div>
+        <p id="analyzeStatus" class="muted"></p>
+        <textarea id="analysisOutput" placeholder="Ozet ve aksiyonlar burada gorunecek..."></textarea>
+      </section>
+    </main>
+
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>

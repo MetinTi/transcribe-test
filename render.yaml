@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: transcribe-test
+    env: node
+    rootDir: backend
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    autoDeploy: true
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: MAX_UPLOAD_MB
+        value: "500"
+      - key: CORS_ORIGIN
+        value: "*"

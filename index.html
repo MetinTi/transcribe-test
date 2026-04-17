@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CepNot Toplanti Test</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>Toplanti Kayit ve Cozumleme Testi</h1>
+      <p class="muted">
+        Bu sayfa, toplanti sesi kaydetmeyi ve OpenAI ile metne cevirip ozet cikarmayi test eder.
+      </p>
+
+      <section class="card">
+        <h2>1) Ses Dosyasi Yukle</h2>
+        <p class="muted">Dosya secildiginde transcribe islemi otomatik baslar.</p>
+        <input id="fileInput" type="file" accept="audio/*" />
+        <p id="recordStatus" class="muted">Hazir</p>
+      </section>
+
+      <section class="card">
+        <h2>2) Metne Cevir</h2>
+        <button id="transcribeBtn" disabled>Transcribe Et</button>
+        <p id="transcribeStatus" class="muted"></p>
+        <textarea id="transcriptOutput" placeholder="Transkript burada gorunecek..."></textarea>
+      </section>
+
+      <section class="card">
+        <h2>3) Ozet Cikar</h2>
+        <button id="analyzeBtn" disabled>Ozet ve Aksiyonlari Cikar</button>
+        <p id="analyzeStatus" class="muted"></p>
+        <textarea id="analysisOutput" placeholder="Ozet ve aksiyonlar burada gorunecek..."></textarea>
+      </section>
+    </main>
+
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>
