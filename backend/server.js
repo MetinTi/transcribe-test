@@ -25,6 +25,7 @@ const maxUploadBytes = maxUploadMb * 1024 * 1024;
 const corsOrigin = process.env.CORS_ORIGIN || '*';
 const chunkSeconds = Number(process.env.CHUNK_SECONDS || 600);
 const openAiChunkSafeBytes = 24 * 1024 * 1024;
+const transcribeModel = process.env.TRANSCRIBE_MODEL || 'gpt-4o-transcribe';
 
 if (!process.env.OPENAI_API_KEY) {
   console.warn('OPENAI_API_KEY is missing. Transcribe requests will fail.');
@@ -48,7 +49,7 @@ const upload = multer({
 });
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, maxUploadMb, chunkSeconds });
+  res.json({ ok: true, maxUploadMb, chunkSeconds, transcribeModel });
 });
 
 app.post('/transcribe', upload.single('audio'), async (req, res) => {
@@ -228,7 +229,7 @@ async function transcribeSingleChunk({ chunkPath, originalName, mimeType }) {
 
   const openAiForm = new FormData();
   openAiForm.append('file', audioFile);
-  openAiForm.append('model', 'gpt-4o-mini-transcribe');
+  openAiForm.append('model', transcribeModel);
   openAiForm.append('response_format', 'json');
 
   const openAiResp = await fetch('https://api.openai.com/v1/audio/transcriptions', {

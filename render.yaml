@@ -14,3 +14,5 @@ services:
         value: "500"
       - key: CORS_ORIGIN
         value: "*"
+      - key: TRANSCRIBE_MODEL
+        value: "gpt-4o-transcribe"
