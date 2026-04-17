@@ -177,22 +177,27 @@ app.post('/analyze', async (req, res) => {
 
 function splitAudioToChunks({ inputPath, workDir, chunkSeconds }) {
   return new Promise((resolve, reject) => {
-    const outputPattern = path.join(workDir, 'chunk-%03d.mp3');
+    const outputPattern = path.join(workDir, 'chunk-%03d.wav');
+    let stderr = '';
     ffmpeg(inputPath)
-      .audioCodec('libmp3lame')
-      .audioBitrate('64k')
+      .audioCodec('pcm_s16le')
+      .audioFrequency(16000)
+      .audioChannels(1)
       .outputOptions([
+        '-vn',
         '-f segment',
         `-segment_time ${chunkSeconds}`,
         '-reset_timestamps 1',
-        '-vn',
       ])
       .output(outputPattern)
+      .on('stderr', (line) => {
+        stderr += `${line}\n`;
+      })
       .on('end', async () => {
         try {
           const files = await fsp.readdir(workDir);
           const chunkFiles = files
-            .filter((f) => f.startsWith('chunk-') && f.endsWith('.mp3'))
+            .filter((f) => f.startsWith('chunk-') && f.endsWith('.wav'))
             .sort()
             .map((f) => path.join(workDir, f));
           if (chunkFiles.length === 0) {
@@ -204,16 +209,19 @@ function splitAudioToChunks({ inputPath, workDir, chunkSeconds }) {
           reject(error);
         }
       })
-      .on('error', (err) => reject(err))
+      .on('error', (err) => {
+        const msg = `ffmpeg hatasi: ${err.message}\n${stderr.trim().split('\n').slice(-5).join(' | ')}`;
+        reject(new Error(msg));
+      })
       .run();
   });
 }
 
 async function transcribeSingleChunk({ chunkPath, originalName, mimeType }) {
   const buffer = await fsp.readFile(chunkPath);
-  const ext = path.extname(chunkPath) || '.mp3';
+  const ext = path.extname(chunkPath) || '.wav';
   const fileName = originalName ? `${path.basename(originalName, path.extname(originalName))}${ext}` : `audio${ext}`;
-  const blobType = ext === '.mp3' ? 'audio/mpeg' : mimeType || 'application/octet-stream';
+  const blobType = ext === '.wav' ? 'audio/wav' : ext === '.mp3' ? 'audio/mpeg' : mimeType || 'application/octet-stream';
 
   const audioBlob = new Blob([buffer], { type: blobType });
   const audioFile = new File([audioBlob], fileName, { type: blobType });
