@@ -14,6 +14,8 @@ services:
       - key: CORS_ORIGIN
         value: "*"
       - key: TRANSCRIBE_MODEL
-        value: "gpt-4o-transcribe"
+        value: "gpt-4o-transcribe-diarize"
+      - key: ANALYZE_MODEL
+        value: "gpt-4o"
       - key: CHUNK_SECONDS
-        value: "600"
+        value: "1400"

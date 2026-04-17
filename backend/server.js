@@ -22,9 +22,10 @@ const port = Number(process.env.PORT || 8787);
 const maxUploadMb = Number(process.env.MAX_UPLOAD_MB || 500);
 const maxUploadBytes = maxUploadMb * 1024 * 1024;
 const corsOrigin = process.env.CORS_ORIGIN || '*';
-const chunkSeconds = Number(process.env.CHUNK_SECONDS || 600);
+const chunkSeconds = Number(process.env.CHUNK_SECONDS || 1400);
 const openAiChunkSafeBytes = 24 * 1024 * 1024;
-const transcribeModel = process.env.TRANSCRIBE_MODEL || 'gpt-4o-transcribe';
+const transcribeModel = process.env.TRANSCRIBE_MODEL || 'gpt-4o-transcribe-diarize';
+const analyzeModel = process.env.ANALYZE_MODEL || 'gpt-4o';
 
 if (!process.env.OPENAI_API_KEY) {
   console.warn('OPENAI_API_KEY is missing. Transcribe requests will fail.');
@@ -48,7 +49,7 @@ const upload = multer({
 });
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, maxUploadMb, chunkSeconds, transcribeModel });
+  res.json({ ok: true, maxUploadMb, chunkSeconds, transcribeModel, analyzeModel });
 });
 
 app.post('/transcribe', upload.single('audio'), async (req, res) => {
@@ -142,12 +143,12 @@ app.post('/analyze', async (req, res) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: analyzeModel,
         temperature: 0.2,
         messages: [
           {
             role: 'system',
-            content: 'Sen toplanti notlarini net ve kisa ozetleyen bir asistansin. Turkce yaz.',
+            content: 'Sen toplanti notlarini net ve kisa ozetleyen bir asistansin. Turkce yaz. Metinde "Konusmaci A", "Konusmaci B" gibi etiketler varsa bunlari ozette de koru, kim ne dedi ayrimini yap.',
           },
           { role: 'user', content: prompt },
         ],
@@ -235,10 +236,15 @@ async function transcribeSingleChunk({ chunkPath, originalName, mimeType }) {
   const audioBlob = new Blob([buffer], { type: blobType });
   const audioFile = new File([audioBlob], fileName, { type: blobType });
 
+  const isDiarize = /diarize/i.test(transcribeModel);
+
   const openAiForm = new FormData();
   openAiForm.append('file', audioFile);
   openAiForm.append('model', transcribeModel);
-  openAiForm.append('response_format', 'json');
+  openAiForm.append('response_format', isDiarize ? 'diarized_json' : 'json');
+  if (isDiarize) {
+    openAiForm.append('chunking_strategy', 'auto');
+  }
 
   const openAiResp = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',
@@ -259,6 +265,23 @@ async function transcribeSingleChunk({ chunkPath, originalName, mimeType }) {
   if (!openAiResp.ok) {
     const errorMsg = parsed?.error?.message || parsed?.error || text || 'OpenAI hatasi';
     throw new Error(errorMsg);
+  }
+
+  if (isDiarize && Array.isArray(parsed?.segments)) {
+    const lines = [];
+    let lastSpeaker = null;
+    for (const seg of parsed.segments) {
+      const speaker = seg?.speaker ?? seg?.speaker_id ?? '?';
+      const segText = String(seg?.text || '').trim();
+      if (!segText) continue;
+      if (speaker !== lastSpeaker) {
+        lines.push(`Konusmaci ${speaker}: ${segText}`);
+        lastSpeaker = speaker;
+      } else {
+        lines.push(segText);
+      }
+    }
+    if (lines.length > 0) return lines.join('\n');
   }
 
   return parsed?.text || '';
