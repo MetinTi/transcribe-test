@@ -3,19 +3,18 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
-import ffmpeg from 'fluent-ffmpeg';
+
+console.log('[boot] starting transcribe backend...');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const explicitFfmpegPath = process.env.FFMPEG_PATH;
-if (explicitFfmpegPath) {
-  ffmpeg.setFfmpegPath(explicitFfmpegPath);
-}
+const ffmpegBinary = process.env.FFMPEG_PATH || 'ffmpeg';
 
 const app = express();
 
@@ -179,42 +178,51 @@ app.post('/analyze', async (req, res) => {
 function splitAudioToChunks({ inputPath, workDir, chunkSeconds }) {
   return new Promise((resolve, reject) => {
     const outputPattern = path.join(workDir, 'chunk-%03d.wav');
+    const args = [
+      '-y',
+      '-i', inputPath,
+      '-vn',
+      '-acodec', 'pcm_s16le',
+      '-ar', '16000',
+      '-ac', '1',
+      '-f', 'segment',
+      '-segment_time', String(chunkSeconds),
+      '-reset_timestamps', '1',
+      outputPattern,
+    ];
+
     let stderr = '';
-    ffmpeg(inputPath)
-      .audioCodec('pcm_s16le')
-      .audioFrequency(16000)
-      .audioChannels(1)
-      .outputOptions([
-        '-vn',
-        '-f segment',
-        `-segment_time ${chunkSeconds}`,
-        '-reset_timestamps 1',
-      ])
-      .output(outputPattern)
-      .on('stderr', (line) => {
-        stderr += `${line}\n`;
-      })
-      .on('end', async () => {
-        try {
-          const files = await fsp.readdir(workDir);
-          const chunkFiles = files
-            .filter((f) => f.startsWith('chunk-') && f.endsWith('.wav'))
-            .sort()
-            .map((f) => path.join(workDir, f));
-          if (chunkFiles.length === 0) {
-            reject(new Error('Parcalama basarisiz: hic chunk uretilmedi'));
-            return;
-          }
-          resolve(chunkFiles);
-        } catch (error) {
-          reject(error);
+    const proc = spawn(ffmpegBinary, args);
+
+    proc.stderr.on('data', (buf) => {
+      stderr += buf.toString();
+    });
+
+    proc.on('error', (err) => {
+      reject(new Error(`ffmpeg calistirilamadi (${ffmpegBinary}): ${err.message}`));
+    });
+
+    proc.on('close', async (code) => {
+      if (code !== 0) {
+        const tail = stderr.trim().split('\n').slice(-8).join(' | ');
+        reject(new Error(`ffmpeg exit code ${code}: ${tail}`));
+        return;
+      }
+      try {
+        const files = await fsp.readdir(workDir);
+        const chunkFiles = files
+          .filter((f) => f.startsWith('chunk-') && f.endsWith('.wav'))
+          .sort()
+          .map((f) => path.join(workDir, f));
+        if (chunkFiles.length === 0) {
+          reject(new Error('Parcalama basarisiz: hic chunk uretilmedi'));
+          return;
         }
-      })
-      .on('error', (err) => {
-        const msg = `ffmpeg hatasi: ${err.message}\n${stderr.trim().split('\n').slice(-5).join(' | ')}`;
-        reject(new Error(msg));
-      })
-      .run();
+        resolve(chunkFiles);
+      } catch (error) {
+        reject(error);
+      }
+    });
   });
 }
 
@@ -260,5 +268,5 @@ app.listen(port, () => {
   console.log(`Transcribe backend running on port ${port}`);
   console.log(`Max upload: ${maxUploadMb} MB`);
   console.log(`Chunk seconds: ${chunkSeconds}`);
-  console.log(`FFmpeg path: ${explicitFfmpegPath || '(system PATH)'}`);
+  console.log(`FFmpeg binary: ${ffmpegBinary}`);
 });
