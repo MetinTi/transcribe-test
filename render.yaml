@@ -18,4 +18,4 @@ services:
       - key: ANALYZE_MODEL
         value: "gpt-4o"
       - key: CHUNK_SECONDS
-        value: "1400"
+        value: "1380"
