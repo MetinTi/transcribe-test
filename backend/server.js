@@ -56,19 +56,46 @@ app.post('/transcribe', upload.single('audio'), async (req, res) => {
   const createdChunkPaths = [];
   const uploadedPath = req.file?.path || null;
 
+  res.status(200);
+  res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.setHeader('Connection', 'keep-alive');
+  if (typeof res.flushHeaders === 'function') res.flushHeaders();
+
+  const writeEvent = (obj) => {
+    try {
+      res.write(`${JSON.stringify(obj)}\n`);
+    } catch {}
+  };
+
+  const heartbeat = setInterval(() => {
+    writeEvent({ type: 'heartbeat', ts: Date.now() });
+  }, 15000);
+
   try {
     if (!process.env.OPENAI_API_KEY) {
-      return res.status(500).json({ error: 'OPENAI_API_KEY tanimli degil' });
+      writeEvent({ type: 'error', error: 'OPENAI_API_KEY tanimli degil' });
+      return;
     }
     if (!req.file) {
-      return res.status(400).json({ error: 'audio dosyasi gerekli' });
+      writeEvent({ type: 'error', error: 'audio dosyasi gerekli' });
+      return;
     }
 
     const stats = await fsp.stat(uploadedPath);
+    writeEvent({
+      type: 'status',
+      stage: 'uploaded',
+      sizeBytes: stats.size,
+      message: `Dosya alindi (${(stats.size / 1024 / 1024).toFixed(1)} MB)`,
+    });
+
     const needsChunking = stats.size > openAiChunkSafeBytes;
 
     let chunkPaths;
     if (needsChunking) {
+      writeEvent({ type: 'status', stage: 'chunking', message: 'Ses parcalaniyor...' });
       const workDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'tr-chunks-'));
       chunkPaths = await splitAudioToChunks({
         inputPath: uploadedPath,
@@ -76,6 +103,12 @@ app.post('/transcribe', upload.single('audio'), async (req, res) => {
         chunkSeconds,
       });
       createdChunkPaths.push(...chunkPaths, workDir);
+      writeEvent({
+        type: 'status',
+        stage: 'chunked',
+        total: chunkPaths.length,
+        message: `${chunkPaths.length} parcaya bolundu`,
+      });
     } else {
       chunkPaths = [uploadedPath];
     }
@@ -83,29 +116,47 @@ app.post('/transcribe', upload.single('audio'), async (req, res) => {
     const results = [];
     for (let i = 0; i < chunkPaths.length; i += 1) {
       const chunkPath = chunkPaths[i];
+      writeEvent({
+        type: 'status',
+        stage: 'transcribing',
+        index: i + 1,
+        total: chunkPaths.length,
+        message: `Parca ${i + 1}/${chunkPaths.length} transcribe ediliyor...`,
+      });
       const transcriptPart = await transcribeSingleChunk({
         chunkPath,
         originalName: req.file.originalname,
         mimeType: req.file.mimetype,
       });
       results.push(transcriptPart);
+      writeEvent({
+        type: 'chunk',
+        index: i + 1,
+        total: chunkPaths.length,
+        text: transcriptPart,
+      });
     }
 
     const joined = results.map((r) => r.trim()).filter(Boolean).join('\n\n');
-    return res.json({
+    writeEvent({
+      type: 'done',
       text: joined,
       chunks: chunkPaths.length,
       originalSizeBytes: stats.size,
     });
   } catch (error) {
     if (error?.code === 'LIMIT_FILE_SIZE') {
-      return res.status(413).json({
+      writeEvent({
+        type: 'error',
         error: `Dosya boyutu limiti asildi. Mevcut limit: ${maxUploadMb} MB`,
       });
+    } else {
+      console.error('Transcribe error:', error);
+      writeEvent({ type: 'error', error: error?.message || 'Bilinmeyen hata' });
     }
-    console.error('Transcribe error:', error);
-    return res.status(500).json({ error: error?.message || 'Bilinmeyen hata' });
   } finally {
+    clearInterval(heartbeat);
+    try { res.end(); } catch {}
     if (uploadedPath) {
       fs.promises.unlink(uploadedPath).catch(() => {});
     }

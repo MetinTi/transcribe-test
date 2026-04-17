@@ -65,9 +65,10 @@ copyAnalysisBtn.addEventListener('click', async () => {
 async function runTranscription() {
   if (!currentAudioFile) return;
   const startedAt = Date.now();
-  transcribeStatus.textContent = `Transcribe basladi. ${formatBytes(currentAudioFile.size)} dosya isleniyor, buyuk dosyalar parcalanarak islenir, lutfen bekleyin...`;
+  transcribeStatus.textContent = `Yukleniyor... ${formatBytes(currentAudioFile.size)}`;
   transcribeBtn.disabled = true;
   analyzeBtn.disabled = true;
+  transcriptOutput.value = '';
   try {
     const formData = new FormData();
     formData.append('audio', currentAudioFile);
@@ -75,23 +76,62 @@ async function runTranscription() {
       method: 'POST',
       body: formData,
     });
-    const responseText = await res.text();
-    let data = null;
-    try {
-      data = JSON.parse(responseText);
-    } catch {
-      data = null;
+
+    if (!res.ok && !res.body) {
+      const text = await res.text().catch(() => '');
+      throw new Error(text || `HTTP ${res.status}`);
     }
-    if (!res.ok) {
-      throw new Error(data?.error || responseText || 'Transcribe hatasi');
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    const accumulatedChunks = [];
+    let finalText = null;
+    let totalChunks = 0;
+    let lastError = null;
+
+    const handleEvent = (evt) => {
+      if (!evt || !evt.type) return;
+      if (evt.type === 'status') {
+        transcribeStatus.textContent = evt.message || 'Isleniyor...';
+      } else if (evt.type === 'chunk') {
+        accumulatedChunks[evt.index - 1] = evt.text || '';
+        totalChunks = evt.total || totalChunks;
+        transcriptOutput.value = accumulatedChunks.filter(Boolean).join('\n\n');
+        transcribeStatus.textContent = `Parca ${evt.index}/${evt.total} tamamlandi (canli akis)`;
+      } else if (evt.type === 'done') {
+        finalText = evt.text || accumulatedChunks.filter(Boolean).join('\n\n');
+        totalChunks = evt.chunks || totalChunks;
+      } else if (evt.type === 'error') {
+        lastError = evt.error || 'Bilinmeyen hata';
+      }
+    };
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let nlIdx;
+      while ((nlIdx = buffer.indexOf('\n')) !== -1) {
+        const line = buffer.slice(0, nlIdx).trim();
+        buffer = buffer.slice(nlIdx + 1);
+        if (!line) continue;
+        try {
+          handleEvent(JSON.parse(line));
+        } catch {}
+      }
     }
-    if (typeof data?.text !== 'string') {
-      throw new Error('Gecersiz yanit: text alani bulunamadi');
+    if (buffer.trim()) {
+      try { handleEvent(JSON.parse(buffer.trim())); } catch {}
     }
-    transcriptOutput.value = data.text;
+
+    if (lastError) throw new Error(lastError);
+    if (finalText == null) throw new Error('Akis beklenmedik sekilde sonlandi');
+
+    transcriptOutput.value = finalText;
     analyzeBtn.disabled = transcriptOutput.value.trim().length === 0;
     const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
-    const chunkInfo = data.chunks && data.chunks > 1 ? ` - ${data.chunks} parcada islendi` : '';
+    const chunkInfo = totalChunks > 1 ? ` - ${totalChunks} parcada islendi` : '';
     transcribeStatus.textContent = `Transcribe tamamlandi (${elapsed} sn)${chunkInfo}.`;
   } catch (error) {
     transcribeStatus.textContent = `Hata: ${error.message}`;
