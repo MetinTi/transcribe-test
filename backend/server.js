@@ -7,14 +7,14 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
-import ffmpegPath from 'ffmpeg-static';
 import ffmpeg from 'fluent-ffmpeg';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-if (ffmpegPath) {
-  ffmpeg.setFfmpegPath(ffmpegPath);
+const explicitFfmpegPath = process.env.FFMPEG_PATH;
+if (explicitFfmpegPath) {
+  ffmpeg.setFfmpegPath(explicitFfmpegPath);
 }
 
 const app = express();
@@ -260,5 +260,5 @@ app.listen(port, () => {
   console.log(`Transcribe backend running on port ${port}`);
   console.log(`Max upload: ${maxUploadMb} MB`);
   console.log(`Chunk seconds: ${chunkSeconds}`);
-  console.log(`FFmpeg path: ${ffmpegPath || '(system)'}`);
+  console.log(`FFmpeg path: ${explicitFfmpegPath || '(system PATH)'}`);
 });

@@ -1,11 +1,10 @@
 services:
   - type: web
     name: transcribe-test
-    env: node
+    runtime: docker
     rootDir: backend
+    dockerfilePath: ./Dockerfile
     plan: free
-    buildCommand: npm install
-    startCommand: npm start
     autoDeploy: true
     envVars:
       - key: OPENAI_API_KEY
@@ -16,3 +15,5 @@ services:
         value: "*"
       - key: TRANSCRIBE_MODEL
         value: "gpt-4o-transcribe"
+      - key: CHUNK_SECONDS
+        value: "600"
